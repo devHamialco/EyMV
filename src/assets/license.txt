@@ -1,0 +1,11 @@
+Model Information:
+* title:	Lop warfaremachine low-poly
+* source:	https://sketchfab.com/3d-models/lop-warfaremachine-low-poly-3f871a412fb64b218d5948f71c71f528
+* author:	HonestlyPancra (https://sketchfab.com/justpancra12)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Lop warfaremachine low-poly" (https://sketchfab.com/3d-models/lop-warfaremachine-low-poly-3f871a412fb64b218d5948f71c71f528) by HonestlyPancra (https://sketchfab.com/justpancra12) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

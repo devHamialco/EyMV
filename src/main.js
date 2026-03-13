@@ -1,197 +1,135 @@
-import * as THREE from "three";
-import * as CANNON from "cannon-es";
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-//Mundo de caramelo
-const mundo = new CANNON.World();
-mundo.gravity.set(0, -9.82, 0);
-
-// Escena y Cámara
 const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87CEEB);
 
-let fov = 75;
-const aspect = window.innerWidth / window.innerHeight;
-const near = 0.1;
-const far = 1000;
-const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 0.5, 5);
 
-// Crear el renderizador
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 
-// Crear el cielo
-//Esfera cielo
-const skyGeometry = new THREE.SphereGeometry(50, 32, 32);
-const skyMaterial = new THREE.MeshBasicMaterial({
-  map: new THREE.TextureLoader().load('/assets/imagenes/cielo.jpg'),
-  side: THREE.BackSide, // renderizar solo el interior de la esfera
-});
+const velocidadCamara = 5;
+const teclas = { w: false, a: false, s: false, d: false };
 
-const sky = new THREE.Mesh(skyGeometry, skyMaterial);
-scene.add(sky);
-
-// Clonador de cajitas
-function crearCaja(tamaño, posicion, texturaPath, mass = 1, restitution = 0.3) {
-    const geometry = new THREE.BoxGeometry(tamaño.x, tamaño.y, tamaño.z);
-    const loader = new THREE.TextureLoader();
-
-    let material;
-
-    // Usamos .includes para detectar si es una skin de cabeza
-    if (texturaPath.includes('steve.png') || texturaPath.includes('creeper.png')) {
-        
-        // Configuración para un atlas de "Solo Cabeza" 
-        const u = 1/4; 
-        const v = 1/2; 
-
-        const cargarCaraCabeza = (x, y) => {
-            const tex = loader.load(texturaPath);
-            tex.magFilter = THREE.NearestFilter;
-            tex.repeat.set(u, v); 
-            tex.offset.set(x * u, y * v); 
-            return new THREE.MeshStandardMaterial({ map: tex });
-        };
-
-        // Mapeo estándar para el despliegue de una cabeza de Minecraft
-        material = [
-            cargarCaraCabeza(2, 0), 
-            cargarCaraCabeza(0, 0), 
-            cargarCaraCabeza(1, 1), 
-            cargarCaraCabeza(2, 1), 
-            cargarCaraCabeza(1, 0), 
-            cargarCaraCabeza(3, 0)  
-        ];
-    } 
-
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.copy(posicion);
-    scene.add(mesh);
-   
-    // Configuración física con Cannon.js
-    const shape = new CANNON.Box(new CANNON.Vec3(tamaño.x/2, tamaño.y/2, tamaño.z/2));
-    const body = new CANNON.Body({ mass, shape });
-    body.position.copy(posicion);
-    body.material = new CANNON.Material({ restitution });
-    mundo.addBody(body);
-   
-    return { mesh, body };
-}
-
-function crearSuelo(tamaño, posicion, color) {
-    const geometry = new THREE.PlaneGeometry(tamaño.x, tamaño.z);
-    const planeMaterial = new THREE.MeshBasicMaterial({  });
-    const planeTexture = new THREE.TextureLoader().load('/assets/imagenes/pasto.jpg');
-    planeTexture.wrapS = THREE.RepeatWrapping;
-    planeTexture.wrapT = THREE.RepeatWrapping;
-    planeTexture.repeat.set(10, 10);
-    planeMaterial.map = planeTexture;
-    const mesh = new THREE.Mesh(geometry, planeMaterial);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.copy(posicion);
-    scene.add(mesh);
-   
-    const shape = new CANNON.Plane();
-    const body = new CANNON.Body({ mass: 0, shape: shape });
-    body.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-    body.position.copy(posicion);
-    mundo.addBody(body);
-   
-    return { mesh, body };
-}
-
-const suelo = crearSuelo(
-    { x: 10, z: 10 },        
-    { x: 0, y: 0, z: 0 },    
-    0x808080                  
-);
-
-// Steve 
-const cajaRoja = crearCaja(
-    { x: 1, y: 1, z: 1 },    
-    { x: 0, y: 0.5, z: 0 },  
-    '/assets/imagenes/steve.png',
-    2,                        
-    1                      
-);
-
-// Creeper 
-const cubo = crearCaja(
-    { x: 1, y: 1, z: 1 },    
-    { x: 999, y: 999, z: 999 }, 
-    '/assets/imagenes/creeper.png', 
-    1, 
-    1
-);
-
-cubo.body.sleep(); 
-
-
-//Luz direccional
-const directionalLight = new THREE.DirectionalLight(0xffffff, 4);
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
-directionalLight.position.set(10, 10, 10);
-scene.add(directionalLight);
-scene.add(ambientLight);
-
-let anguloOrbita = 0;
-const radioOrbita = 6;
-const alturaOrbita = 3.5;
-let disparado = false;
-
-window.addEventListener('keydown', (e) => {
-    if (e.code === 'Space') {
-
-        //resetear el cubo
-        cubo.body.sleep();
-        cubo.body.position.set(999, 999, 999);
-        cubo.body.velocity.set(0, 0, 0);
-        cubo.body.angularVelocity.set(0, 0, 0);
-        cubo.mesh.position.set(999, 999, 999);
-
-        // Posición de la cámara
-        const posCamara = camera.position.clone();
-        cubo.body.wakeUp();
-        cubo.body.position.set(posCamara.x, posCamara.y, posCamara.z);
-        cubo.mesh.position.copy(cubo.body.position);
-
-        // Dirección hacia el cubo rojo
-        const objetivo = new THREE.Vector3(
-            cajaRoja.body.position.x,
-            cajaRoja.body.position.y,
-            cajaRoja.body.position.z
-        );
-        const direccion = objetivo.sub(posCamara).normalize();
-        const velocidad = 16;
-
-        cubo.body.velocity.set(
-            direccion.x * velocidad,
-            direccion.y * velocidad,
-            direccion.z * velocidad
-        );
- 
+document.addEventListener('keydown', (event) => {
+    const key = event.key.toLowerCase();
+    if (key in teclas) teclas[key] = true;
+    if (event.code === 'Space') {
+        lanzarProyectil();
     }
 });
 
+document.addEventListener('keyup', (event) => {
+    const key = event.key.toLowerCase();
+    if (key in teclas) teclas[key] = false;
+});
+
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+scene.add(ambientLight);
+
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+directionalLight.position.set(5, 10, 5);
+scene.add(directionalLight);
+
+const suelo = new THREE.Mesh(
+    new THREE.PlaneGeometry(20, 20),
+    new THREE.MeshStandardMaterial({ color: 0x4CAF50 })
+);
+suelo.rotation.x = -Math.PI / 2;
+scene.add(suelo);
+
+const loader = new GLTFLoader();
+let modelo = null;
+let modeloDireccion = 1;
+const modeloVelocidad = 2;
+
+loader.load(
+    './src/assets/scene.gltf',
+    (gltf) => {
+        modelo = gltf.scene;
+        modelo.position.set(3, 0, 0);
+        modelo.scale.set(0.5, 0.5, 0.5);
+        scene.add(modelo);
+    },
+    undefined,
+    (error) => {
+        console.error('Error:', error);
+    }
+);
+
+const proyectiles = [];
+const proyectilVelocidad = 15;
+
+function lanzarProyectil() {
+    const geometria = new THREE.SphereGeometry(0.15, 16, 16);
+    const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+    const proyectil = new THREE.Mesh(geometria, material);
+    
+    proyectil.position.copy(camera.position);
+    
+    const direccion = new THREE.Vector3();
+    camera.getWorldDirection(direccion);
+    
+    proyectil.userData = {
+        velocidad: direccion.multiplyScalar(proyectilVelocidad),
+        activo: true
+    };
+    
+    scene.add(proyectil);
+    proyectiles.push(proyectil);
+}
+
 function animar() {
     requestAnimationFrame(animar);
-    mundo.step(1 / 60);
-    sky.rotation.y += 0.002;
-
-    anguloOrbita += 0.015;
-    const targetX = cajaRoja.mesh.position.x;
-    const targetZ = cajaRoja.mesh.position.z;
-    camera.position.x = targetX + Math.sin(anguloOrbita) * radioOrbita;
-    camera.position.z = targetZ + Math.cos(anguloOrbita) * radioOrbita;
-    camera.position.y = alturaOrbita;
-    camera.lookAt(cajaRoja.mesh.position);
-
-    cubo.mesh.position.copy(cubo.body.position);
-    cubo.mesh.quaternion.copy(cubo.body.quaternion);
-
-    cajaRoja.mesh.position.copy(cajaRoja.body.position);
-    cajaRoja.mesh.quaternion.copy(cajaRoja.body.quaternion);
-
+    
+    const direccion = new THREE.Vector3();
+    camera.getWorldDirection(direccion);
+    direccion.y = 0;
+    direccion.normalize();
+    
+    const derecha = new THREE.Vector3();
+    derecha.crossVectors(new THREE.Vector3(0, 1, 0), direccion).normalize();
+    
+    if (teclas.w) camera.position.addScaledVector(direccion, velocidadCamara * 0.016);
+    if (teclas.s) camera.position.addScaledVector(direccion, -velocidadCamara * 0.016);
+    if (teclas.a) camera.position.addScaledVector(derecha, velocidadCamara * 0.016);
+    if (teclas.d) camera.position.addScaledVector(derecha, -velocidadCamara * 0.016);
+    
+    const modeloBox = new THREE.Box3();
+    
+    if (modelo) {
+        modelo.position.x += modeloDireccion * modeloVelocidad * 0.016;
+        modeloBox.setFromObject(modelo);
+        
+        if (modelo.position.x > 5) {
+            modeloDireccion = -1;
+        } else if (modelo.position.x < -5) {
+            modeloDireccion = 1;
+        }
+    }
+    
+    for (let i = proyectiles.length - 1; i >= 0; i--) {
+        const p = proyectiles[i];
+        if (!p.userData.activo) continue;
+        
+        p.position.add(p.userData.velocidad.clone().multiplyScalar(0.016));
+        
+        if (p.position.y < -1 || p.position.distanceTo(new THREE.Vector3(0, 0, 0)) > 50) {
+            scene.remove(p);
+            proyectiles.splice(i, 1);
+            continue;
+        }
+        
+        if (modelo && modeloBox.containsPoint(p.position)) {
+            modelo.rotation.y += Math.PI / 2;
+            scene.remove(p);
+            proyectiles.splice(i, 1);
+        }
+    }
+    
     renderer.render(scene, camera);
 }
 
