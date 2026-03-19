@@ -8,19 +8,31 @@ scene.background = texturaCielo;
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
+const camaraPanoramica = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camaraPanoramica.position.set(0, 100, 10);
+camaraPanoramica.lookAt(0, 0, -30);
+
+let camaraActiva = camera;
+let usandoCamaraPersonaje = true;
+
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
-const velocidadPersonaje = 5;
-const teclas = { w: false, a: false, s: false, d: false, shift: false };
+const velocidadPersonaje = 10;
+const teclas = { w: false, a: false, s: false, d: false };
 
 let anguloCamara = 0;
 let anguloRotacionMouse = 0;
 const sensibilidadRaton = 0.002;
-const distanciaCamara = 5;
+const distanciaCamara = 7;
 const alturaCamara = 3;
+
+let velocidadVertical = 0;
+let enElSuelo = true;
+const gravedad = -30;
+const fuerzaSalto = 12;
 
 const personaje = crearPersonaje();
 scene.add(personaje);
@@ -29,7 +41,9 @@ camera.position.set(0, 3, 5);
 
 const loader = new GLTFLoader();
 const edificios = [];
-const colisionadores = [];
+const colisionadoresMeshes = [];
+const raycaster = new THREE.Raycaster();
+const radioPersonaje = 0.4;
 
 cargarEdificiosMedievales();
 cargarEdificiosModernos();
@@ -43,13 +57,6 @@ function crearPersonaje() {
     cuerpo.position.y = 0.7;
     cuerpo.castShadow = true;
     grupo.add(cuerpo);
-    
-    const cabezaGeometria = new THREE.SphereGeometry(0.25, 16, 16);
-    const cabeza = new THREE.Mesh(cabezaGeometria, material);
-    cabeza.position.y = 1.5;
-    cabeza.castShadow = true;
-    grupo.add(cabeza);
-    
     return grupo;
 }
 
@@ -57,24 +64,59 @@ function cargarEdificiosModernos() {
     const edificiosModernos = [
         //cuadra 1
         //LadoA 
+        { modelo: 'building_A.gltf', x: -34, z: -47, escala: 5, rotacion: 0 },
+        { modelo: 'building_B.gltf', x: -27, z: -47, escala: 5, rotacion: 0 },
+        { modelo: 'building_C.gltf', x: -19, z: -47, escala: 5, rotacion: 0 },
+        { modelo: 'building_D.gltf', x: -10, z: -47, escala: 5, rotacion: 0 },
+        //LadoB
+        { modelo: 'building_E.gltf', x: -10, z: -55, escala: 5, rotacion: Math.PI / 2 },
+        { modelo: 'building_F.gltf', x: -10, z: -75, escala: 5, rotacion: Math.PI / 2 },
+        //LadoC
+        { modelo: 'building_G.gltf', x: -40, z: -55, escala: 5, rotacion: -Math.PI / 2 },
+        { modelo: 'building_H.gltf', x: -40, z: -39, escala: 5, rotacion: -Math.PI / 2 },
+        { modelo: 'building_A.gltf', x: -40, z: -47, escala: 5, rotacion: -Math.PI / 2 },
+        //LadoD
+        { modelo: 'building_B.gltf', x: -40, z: -77, escala: 5, rotacion: Math.PI },
+        { modelo: 'building_C.gltf', x: -33, z: -77, escala: 5, rotacion: Math.PI },
+        { modelo: 'building_E.gltf', x: -20, z: -77, escala: 5, rotacion: Math.PI },
+
+        //cuadra 2
+        //LadoA 
+        { modelo: 'building_A.gltf', x: 15, z: -47, escala: 5, rotacion: 0 },
+        { modelo: 'building_B.gltf', x: 23, z: -47, escala: 5, rotacion: 0 },
+        { modelo: 'building_C.gltf', x: 40, z: -47, escala: 5, rotacion: 0 },
+        //LadoB
+        { modelo: 'building_E.gltf', x: 40, z: -55, escala: 5, rotacion: Math.PI / 2 },
+        { modelo: 'building_F.gltf', x: 40, z: -75, escala: 5, rotacion: Math.PI / 2 },
+        { modelo: 'building_D.gltf', x: 40, z: -65, escala: 5, rotacion: Math.PI / 2 },
+        //LadoC
+        { modelo: 'building_G.gltf', x: 10, z: -55, escala: 5, rotacion: -Math.PI / 2 },
+        { modelo: 'building_H.gltf', x: 10, z: -39, escala: 5, rotacion: -Math.PI / 2 },
+        { modelo: 'building_A.gltf', x: 10, z: -47, escala: 5, rotacion: -Math.PI / 2 },
+        //LadoD
+        { modelo: 'building_B.gltf', x: 15, z: -67, escala: 5, rotacion: Math.PI },
+        { modelo: 'building_C.gltf', x: 23, z: -67, escala: 5, rotacion: Math.PI },
+        { modelo: 'building_E.gltf', x: 31, z: -67, escala: 5, rotacion: Math.PI },
+
+        //cuadra 3
+        //LadoA 
         { modelo: 'building_A.gltf', x: -34, z: 10, escala: 5, rotacion: 0 },
         { modelo: 'building_B.gltf', x: -27, z: 10, escala: 5, rotacion: 0 },
-        { modelo: 'building_C.gltf', x: -19, z: 10, escala: 5, rotacion: 0 },
-        { modelo: 'building_D.gltf', x: -10, z: 10, escala: 5, rotacion: 0 },
+        { modelo: 'building_C.gltf', x: -20, z: 10, escala: 5, rotacion: 0 },
+        { modelo: 'building_D.gltf', x: -8, z: 10, escala: 5, rotacion: 0 },
         //LadoB
-        { modelo: 'building_E.gltf', x: -10, z: 2, escala: 5, rotacion: Math.PI / 2 },
-        { modelo: 'building_F.gltf', x: -10, z: -18, escala: 5, rotacion: Math.PI / 2 },
-        { modelo: 'building_D.gltf', x: -10, z: -8, escala: 5, rotacion: Math.PI / 2 },
+        { modelo: 'building_E.gltf', x: -8, z: 2, escala: 5, rotacion: Math.PI / 2 },
+        { modelo: 'building_F.gltf', x: -8, z: -18, escala: 5, rotacion: Math.PI / 2 },
         //LadoC
         { modelo: 'building_G.gltf', x: -40, z: -16, escala: 5, rotacion: -Math.PI / 2 },
         { modelo: 'building_H.gltf', x: -40, z: 2, escala: 5, rotacion: -Math.PI / 2 },
         { modelo: 'building_A.gltf', x: -40, z: 10, escala: 5, rotacion: -Math.PI / 2 },
         //LadoD
-        { modelo: 'building_B.gltf', x: -30, z: -27, escala: 5, rotacion: Math.PI },
-        { modelo: 'building_C.gltf', x: -23, z: -27, escala: 5, rotacion: Math.PI },
-        { modelo: 'building_E.gltf', x: -15, z: -27, escala: 5, rotacion: Math.PI },
+        { modelo: 'building_B.gltf', x: -35, z: -27, escala: 5, rotacion: Math.PI },
+        { modelo: 'building_C.gltf', x: -21, z: -27, escala: 5, rotacion: Math.PI },
+        { modelo: 'building_E.gltf', x: -13, z: -27, escala: 5, rotacion: Math.PI },
 
-        //cuadra 2
+        //cuadra 4
         //LadoA 
         { modelo: 'building_A.gltf', x: 15, z: 10, escala: 5, rotacion: 0 },
         { modelo: 'building_B.gltf', x: 23, z: 10, escala: 5, rotacion: 0 },
@@ -90,44 +132,7 @@ function cargarEdificiosModernos() {
         //LadoD
         { modelo: 'building_B.gltf', x: 15, z: -27, escala: 5, rotacion: Math.PI },
         { modelo: 'building_C.gltf', x: 23, z: -27, escala: 5, rotacion: Math.PI },
-        { modelo: 'building_E.gltf', x: 31, z: -27, escala: 5, rotacion: Math.PI },
-
-        //cuadra 3
-        //LadoA 
-        { modelo: 'building_A.gltf', x: -34, z: -47, escala: 5, rotacion: 0 },
-        { modelo: 'building_B.gltf', x: -27, z: -47, escala: 5, rotacion: 0 },
-        { modelo: 'building_C.gltf', x: -19, z: -47, escala: 5, rotacion: 0 },
-        { modelo: 'building_D.gltf', x: -10, z: -47, escala: 5, rotacion: 0 },
-        //LadoB
-        { modelo: 'building_E.gltf', x: -10, z: -55, escala: 5, rotacion: Math.PI / 2 },
-        { modelo: 'building_F.gltf', x: -10, z: -75, escala: 5, rotacion: Math.PI / 2 },
-        { modelo: 'building_D.gltf', x: -10, z: -65, escala: 5, rotacion: Math.PI / 2 },
-        //LadoC
-        { modelo: 'building_G.gltf', x: -40, z: -55, escala: 5, rotacion: -Math.PI / 2 },
-        { modelo: 'building_H.gltf', x: -40, z: -39, escala: 5, rotacion: -Math.PI / 2 },
-        { modelo: 'building_A.gltf', x: -40, z: -47, escala: 5, rotacion: -Math.PI / 2 },
-        //LadoD
-        { modelo: 'building_B.gltf', x: -30, z: -67, escala: 5, rotacion: Math.PI },
-        { modelo: 'building_C.gltf', x: -23, z: -67, escala: 5, rotacion: Math.PI },
-        { modelo: 'building_E.gltf', x: -15, z: -67, escala: 5, rotacion: Math.PI },
-
-        //cuadra 4
-        //LadoA 
-        { modelo: 'building_A.gltf', x: 15, z: -47, escala: 5, rotacion: 0 },
-        { modelo: 'building_B.gltf', x: 23, z: -47, escala: 5, rotacion: 0 },
-        { modelo: 'building_C.gltf', x: 31, z: -47, escala: 5, rotacion: 0 },
-        //LadoB
-        { modelo: 'building_E.gltf', x: 40, z: -55, escala: 5, rotacion: Math.PI / 2 },
-        { modelo: 'building_F.gltf', x: 40, z: -75, escala: 5, rotacion: Math.PI / 2 },
-        { modelo: 'building_D.gltf', x: 40, z: -65, escala: 5, rotacion: Math.PI / 2 },
-        //LadoC
-        { modelo: 'building_G.gltf', x: 10, z: -55, escala: 5, rotacion: -Math.PI / 2 },
-        { modelo: 'building_H.gltf', x: 10, z: -39, escala: 5, rotacion: -Math.PI / 2 },
-        { modelo: 'building_A.gltf', x: 10, z: -47, escala: 5, rotacion: -Math.PI / 2 },
-        //LadoD
-        { modelo: 'building_B.gltf', x: 15, z: -67, escala: 5, rotacion: Math.PI },
-        { modelo: 'building_C.gltf', x: 23, z: -67, escala: 5, rotacion: Math.PI },
-        { modelo: 'building_E.gltf', x: 31, z: -67, escala: 5, rotacion: Math.PI },
+        { modelo: 'building_E.gltf', x: 38, z: -27, escala: 5, rotacion: Math.PI },
     ];
     
     edificiosModernos.forEach(edificio => {
@@ -142,13 +147,11 @@ function cargarEdificiosModernos() {
                     if (child.isMesh) {
                         child.castShadow = true;
                         child.receiveShadow = true;
+                        colisionadoresMeshes.push(child);
                     }
                 });
                 scene.add(modelo);
                 edificios.push(modelo);
-                
-                const box = new THREE.Box3().setFromObject(modelo);
-                colisionadores.push({ box, tipo: 'edificio' });
             },
             undefined,
             (error) => console.error(`Error cargando ${edificio.modelo}:`, error)
@@ -173,13 +176,11 @@ function cargarEdificiosMedievales() {
                     if (child.isMesh) {
                         child.castShadow = true;
                         child.receiveShadow = true;
+                        colisionadoresMeshes.push(child);
                     }
                 });
                 scene.add(modelo);
                 edificios.push(modelo);
-                
-                const box = new THREE.Box3().setFromObject(modelo);
-                colisionadores.push({ box, tipo: 'edificio' });
             },
             undefined,
             (error) => console.error(`Error cargando ${edificio.modelo}:`, error)
@@ -190,21 +191,39 @@ function cargarEdificiosMedievales() {
 document.addEventListener('keydown', (event) => {
     const key = event.key.toLowerCase();
     if (key in teclas) teclas[key] = true;
-    if (key === 'shift') teclas.shift = true;
+    
+    if (event.key.toLowerCase() === 'v') {
+        usandoCamaraPersonaje = !usandoCamaraPersonaje;
+        camaraActiva = usandoCamaraPersonaje ? camera : camaraPanoramica;
+        
+        if (usandoCamaraPersonaje) {
+            renderer.domElement.requestPointerLock();
+        } else {
+            document.exitPointerLock();
+        }
+    }
+    
+    if (event.code === 'Space' && enElSuelo) {
+        velocidadVertical = fuerzaSalto;
+        enElSuelo = true;
+    }
 });
 
 document.addEventListener('keyup', (event) => {
     const key = event.key.toLowerCase();
     if (key in teclas) teclas[key] = false;
-    if (key === 'shift') teclas.shift = false;
 });
 
 document.addEventListener('mousemove', (event) => {
-    anguloRotacionMouse -= event.movementX * sensibilidadRaton;
+    if (usandoCamaraPersonaje && document.pointerLockElement === renderer.domElement) {
+        anguloRotacionMouse -= event.movementX * sensibilidadRaton;
+    }
 });
 
 document.addEventListener('click', () => {
-    renderer.domElement.requestPointerLock();
+    if (usandoCamaraPersonaje) {
+        renderer.domElement.requestPointerLock();
+    }
 });
 
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -224,32 +243,36 @@ directionalLight.shadow.camera.bottom = -30;
 scene.add(directionalLight);
 
 const suelo = new THREE.Mesh(
-    new THREE.PlaneGeometry(100, 150),
+    new THREE.PlaneGeometry(150, 200),
     new THREE.MeshStandardMaterial({ color: 0x393D42 })
 );
 suelo.rotation.x = -Math.PI / 2;
 suelo.receiveShadow = true;
 scene.add(suelo);
 
-const limiteEscenario = 45;
+const limiteEscenario = 100;
 
-function verificarColision(nuevaPosicion) {
-    const personajeBox = new THREE.Box3(
-        new THREE.Vector3(nuevaPosicion.x - 0.3, 0, nuevaPosicion.z - 0.3),
-        new THREE.Vector3(nuevaPosicion.x + 0.3, 1.8, nuevaPosicion.z + 0.3)
+function verificarColision(direccion) {
+    const origen = new THREE.Vector3(
+        personaje.position.x,
+        personaje.position.y + 0.5,
+        personaje.position.z
     );
     
-    for (const colisionador of colisionadores) {
-        if (personajeBox.intersectsBox(colisionador.box)) {
-            return true;
-        }
-    }
+    raycaster.set(origen, direccion);
+    raycaster.far = radioPersonaje;
     
-    return false;
+    const intersecciones = raycaster.intersectObjects(colisionadoresMeshes);
+    
+    return intersecciones.length > 0;
+}
+
+function puedeMoverse(direccion) {
+    return !verificarColision(direccion);
 }
 
 function moverPersonaje(delta) {
-    const velocidad = teclas.shift ? velocidadPersonaje * 2 : velocidadPersonaje;
+    const velocidad = velocidadPersonaje;
     
     const direccionAdelante = new THREE.Vector3(
         Math.sin(anguloRotacionMouse),
@@ -273,28 +296,22 @@ function moverPersonaje(delta) {
     if (movimiento.length() > 0) {
         movimiento.normalize().multiplyScalar(velocidad * delta);
         
-        const nuevaPosX = new THREE.Vector3(
-            personaje.position.x + movimiento.x,
-            personaje.position.y,
-            personaje.position.z
-        );
-        
-        const nuevaPosZ = new THREE.Vector3(
-            personaje.position.x,
-            personaje.position.y,
-            personaje.position.z + movimiento.z
-        );
-        
-        if (!verificarColision(nuevaPosX)) {
-            personaje.position.x = nuevaPosX.x;
-        }
-        
-        if (!verificarColision(nuevaPosZ)) {
-            personaje.position.z = nuevaPosZ.z;
+        if (puedeMoverse(movimiento.clone().normalize())) {
+            personaje.position.x += movimiento.x;
+            personaje.position.z += movimiento.z;
         }
         
         personaje.position.x = Math.max(-limiteEscenario, Math.min(limiteEscenario, personaje.position.x));
         personaje.position.z = Math.max(-limiteEscenario, Math.min(limiteEscenario, personaje.position.z));
+    }
+    
+    velocidadVertical += gravedad * delta;
+    personaje.position.y += velocidadVertical * delta;
+    
+    if (personaje.position.y <= 0) {
+        personaje.position.y = 0;
+        velocidadVertical = 0;
+        enElSuelo = true;
     }
 }
 
@@ -320,15 +337,20 @@ function animate() {
     
     const delta = 1 / 60;
     
-    moverPersonaje(delta);
-    actualizarCamara();
-    
-    renderer.render(scene, camera);
+    if (usandoCamaraPersonaje) {
+        moverPersonaje(delta);
+        actualizarCamara();
+        renderer.render(scene, camera);
+    } else {
+        renderer.render(scene, camaraPanoramica);
+    }
 }
 
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
+    camaraPanoramica.aspect = window.innerWidth / window.innerHeight;
+    camaraPanoramica.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
