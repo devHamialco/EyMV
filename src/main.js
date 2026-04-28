@@ -50,13 +50,41 @@ cargarEdificiosModernos();
 
 function crearPersonaje() {
     const grupo = new THREE.Group();
-    
-    const cuerpoGeometria = new THREE.CapsuleGeometry(0.3, 0.8, 4, 8);
-    const material = new THREE.MeshStandardMaterial({ color: 0x3498db });
-    const cuerpo = new THREE.Mesh(cuerpoGeometria, material);
-    cuerpo.position.y = 0.7;
-    cuerpo.castShadow = true;
-    grupo.add(cuerpo);
+
+    const loaderPersonaje = new GLTFLoader();
+    loaderPersonaje.load(
+        './src/assets/chavo/scene.gltf',
+        (gltf) => {
+            const modelo = gltf.scene;
+            modelo.scale.set(0.05, 0.05, 0.05);
+            // Cargar y aplicar texturas al modelo
+            const texLoader = new THREE.TextureLoader();
+            const texFace = texLoader.load('./src/assets/chavo/textures/face_baseColor.png');
+            const texBody = texLoader.load('./src/assets/chavo/textures/body_baseColor.png');
+            const texClothes = texLoader.load('./src/assets/chavo/textures/clothes_baseColor.png');
+
+            modelo.traverse((child) => {
+                if (!child.isMesh) return;
+                let chosen = texBody;
+                const nm = (child.name || '').toLowerCase();
+                if (nm.includes('face') || nm.includes('head')) chosen = texFace;
+                else if (nm.includes('cloth') || nm.includes('shirt') || nm.includes('pants') || nm.includes('torso')) chosen = texClothes;
+                if (Array.isArray(child.material)) {
+                    child.material.forEach(m => { m.map = chosen; m.needsUpdate = true; });
+                } else {
+                    child.material.map = chosen;
+                    child.material.needsUpdate = true;
+                }
+                child.castShadow = true;
+                child.receiveShadow = true;
+            });
+
+            grupo.add(modelo);
+        },
+        undefined,
+        (error) => console.error('Error cargando modelo del personaje:', error)
+    );
+
     return grupo;
 }
 
