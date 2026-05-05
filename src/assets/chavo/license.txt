@@ -1,11 +1,11 @@
 Model Information:
-* title:	Wii - El Chavo - Chavo
-* source:	https://sketchfab.com/3d-models/wii-el-chavo-chavo-461db38a83aa4b15a391483afb39935f
-* author:	Silviso (https://sketchfab.com/Silviso)
+* title:	Chavo (El Chavo)
+* source:	https://sketchfab.com/3d-models/chavo-el-chavo-71d1c22ae2774772aaee989e8d5e3df9
+* author:	Guilherme Navarro (https://sketchfab.com/guinavarro.al)
 
 Model License:
 * license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 * requirements:	Author must be credited. Commercial use is allowed.
 
 If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
-This work is based on "Wii - El Chavo - Chavo" (https://sketchfab.com/3d-models/wii-el-chavo-chavo-461db38a83aa4b15a391483afb39935f) by Silviso (https://sketchfab.com/Silviso) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+This work is based on "Chavo (El Chavo)" (https://sketchfab.com/3d-models/chavo-el-chavo-71d1c22ae2774772aaee989e8d5e3df9) by Guilherme Navarro (https://sketchfab.com/guinavarro.al) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

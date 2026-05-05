@@ -14,6 +14,9 @@ camaraPanoramica.lookAt(0, 0, -30);
 
 let camaraActiva = camera;
 let usandoCamaraPersonaje = true;
+// Nuevo personaje cargado desde GLTF; empieza en null hasta que cargue
+let personaje = null;
+let chavoMixer = null;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -34,12 +37,13 @@ let enElSuelo = true;
 const gravedad = -30;
 const fuerzaSalto = 12;
 
-const personaje = crearPersonaje();
-scene.add(personaje);
+// Personaje se carga desde GLTF (cargarChavo), se añadirá a escena al completarse
 
 camera.position.set(0, 3, 5);
 
 const loader = new GLTFLoader();
+// Inicia la carga del personaje Chavo (GLTF). Se añadirá a la escena cuando termine la carga
+cargarChavo();
 const edificios = [];
 const colisionadoresMeshes = [];
 const raycaster = new THREE.Raycaster();
@@ -48,45 +52,7 @@ const radioPersonaje = 0.4;
 cargarEdificiosMedievales();
 cargarEdificiosModernos();
 
-function crearPersonaje() {
-    const grupo = new THREE.Group();
-
-    const loaderPersonaje = new GLTFLoader();
-    loaderPersonaje.load(
-        './src/assets/chavo/scene.gltf',
-        (gltf) => {
-            const modelo = gltf.scene;
-            modelo.scale.set(0.05, 0.05, 0.05);
-            // Cargar y aplicar texturas al modelo
-            const texLoader = new THREE.TextureLoader();
-            const texFace = texLoader.load('./src/assets/chavo/textures/face_baseColor.png');
-            const texBody = texLoader.load('./src/assets/chavo/textures/body_baseColor.png');
-            const texClothes = texLoader.load('./src/assets/chavo/textures/clothes_baseColor.png');
-
-            modelo.traverse((child) => {
-                if (!child.isMesh) return;
-                let chosen = texBody;
-                const nm = (child.name || '').toLowerCase();
-                if (nm.includes('face') || nm.includes('head')) chosen = texFace;
-                else if (nm.includes('cloth') || nm.includes('shirt') || nm.includes('pants') || nm.includes('torso')) chosen = texClothes;
-                if (Array.isArray(child.material)) {
-                    child.material.forEach(m => { m.map = chosen; m.needsUpdate = true; });
-                } else {
-                    child.material.map = chosen;
-                    child.material.needsUpdate = true;
-                }
-                child.castShadow = true;
-                child.receiveShadow = true;
-            });
-
-            grupo.add(modelo);
-        },
-        undefined,
-        (error) => console.error('Error cargando modelo del personaje:', error)
-    );
-
-    return grupo;
-}
+// Cápsula azul reemplazada por GLTF Chavo (cargado en cargarChavo)
 
 function cargarEdificiosModernos() {
     const edificiosModernos = [
@@ -187,6 +153,35 @@ function cargarEdificiosModernos() {
     });
 }
 
+// Carga el personaje Chavo desde GLTF
+function cargarChavo() {
+  loader.load(
+    './src/assets/chavo/scene.gltf',
+    (gltf) => {
+      const modelo = gltf.scene;
+      const escalaDeseada = 2 / 47;
+      modelo.scale.set(escalaDeseada, escalaDeseada, escalaDeseada);
+      modelo.position.set(0, 0, 0);
+      modelo.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+          colisionadoresMeshes.push(child);
+        }
+      });
+      scene.add(modelo);
+      personaje = modelo;
+      if (gltf.animations && gltf.animations.length > 0) {
+        chavoMixer = new THREE.AnimationMixer(modelo);
+        const action = chavoMixer.clipAction(gltf.animations[0]);
+        action.play();
+      }
+    },
+    undefined,
+    (error) => console.error('Error cargando Chavo:', error)
+  );
+}
+
 function cargarEdificiosMedievales() {
     const edificiosMedievales = [
         { modelo: 'buildings/red/building_church_red.gltf', x: -25, z: -9, escala: 8 },
@@ -281,6 +276,7 @@ scene.add(suelo);
 const limiteEscenario = 100;
 
 function verificarColision(direccion) {
+  if (!personaje) return false;
     const origen = new THREE.Vector3(
         personaje.position.x,
         personaje.position.y + 0.5,
@@ -300,6 +296,7 @@ function puedeMoverse(direccion) {
 }
 
 function moverPersonaje(delta) {
+  if (!personaje) return;
     const velocidad = velocidadPersonaje;
     
     const direccionAdelante = new THREE.Vector3(
@@ -344,6 +341,7 @@ function moverPersonaje(delta) {
 }
 
 function actualizarCamara() {
+  if (!personaje) return;
     anguloCamara = anguloRotacionMouse;
     
     const offsetX = Math.sin(anguloCamara) * distanciaCamara;
@@ -368,6 +366,7 @@ function animate() {
     if (usandoCamaraPersonaje) {
         moverPersonaje(delta);
         actualizarCamara();
+        if (chavoMixer) chavoMixer.update(delta);
         renderer.render(scene, camera);
     } else {
         renderer.render(scene, camaraPanoramica);
