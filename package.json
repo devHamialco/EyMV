@@ -9,10 +9,24 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "vite": "^8.0.3"
+    "vite": "^8.0.3",
+    "ws": "^8.21.0"
   },
   "dependencies": {
     "cannon-es": "^0.20.0",
     "three": "^0.183.2"
-  }
+  },
+  "description": "",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devHamialco/EyMV.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/devHamialco/EyMV/issues"
+  },
+  "homepage": "https://github.com/devHamialco/EyMV#readme"
 }
