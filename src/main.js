@@ -1349,7 +1349,7 @@ directionalLight.shadow.camera.bottom = -30;
 scene.add(directionalLight);
 
 const suelo = new THREE.Mesh(
-    new THREE.PlaneGeometry(280, 320),
+    new THREE.PlaneGeometry(200, 280),
     new THREE.MeshStandardMaterial({ color: 0x393D42 })
 );
 suelo.rotation.x = -Math.PI / 2;
