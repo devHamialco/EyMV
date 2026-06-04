@@ -21,6 +21,14 @@ let chavoAction = null; // acción de animación actual (si existe)
 let isChavorumbaActive = false; // indica si el modelo reemplazado por 'J' está activo
 let chavoAudio = null; // reproductor de audio para Chavorumba
 
+// Modelos y animadores precargados para el personaje local
+let modeloParado = null;
+let modeloMovimiento = null;
+let modeloBaile = null;
+let mixerParado = null;
+let mixerMovimiento = null;
+let mixerBaile = null;
+
 // Estado actual del personaje/modelo/sonido (configurable por acciones)
 let Nombre = 'Chavo';
 // Animación actual será la que corresponda según `Nombre` (ver `getIdleAnimation`)
@@ -137,8 +145,12 @@ function spawnRemotePlayer(state) {
         posicion: { ...state.posicion },
         rotacion: state.rotacion,
         personaje: null,
-        mixer: null,
-        action: null,
+        modeloParado: null,
+        modeloMovimiento: null,
+        modeloBaile: null,
+        mixerParado: null,
+        mixerMovimiento: null,
+        mixerBaile: null,
         targetPosicion: { ...state.posicion },
         targetRotacion: state.rotacion
     };
@@ -156,11 +168,35 @@ function updateRemotePlayer(id, state) {
     p.targetPosicion = { ...state.posicion };
     p.targetRotacion = state.rotacion;
 
-    if (p.nombre !== state.nombre || p.animacionActual !== state.animacionActual || p.isChavorumbaActive !== state.isChavorumbaActive) {
+    if (p.nombre !== state.nombre) {
         p.nombre = state.nombre;
         p.animacionActual = state.animacionActual;
         p.isChavorumbaActive = state.isChavorumbaActive;
         cargarPersonajeRemoto(id);
+    } else if (p.animacionActual !== state.animacionActual || p.isChavorumbaActive !== state.isChavorumbaActive) {
+        p.animacionActual = state.animacionActual;
+        p.isChavorumbaActive = state.isChavorumbaActive;
+        actualizarVisibilidadRemoto(id);
+    }
+}
+
+function actualizarVisibilidadRemoto(id) {
+    const p = remotePlayers[id];
+    if (!p || !p.personaje) return;
+
+    const idlePath = getIdleAnimation(p.nombre);
+    const movementPath = getMovementAnimation(p.nombre);
+
+    if (p.modeloParado) p.modeloParado.visible = false;
+    if (p.modeloMovimiento) p.modeloMovimiento.visible = false;
+    if (p.modeloBaile) p.modeloBaile.visible = false;
+
+    if (p.isChavorumbaActive) {
+        if (p.modeloBaile) p.modeloBaile.visible = true;
+    } else if (p.animacionActual === movementPath) {
+        if (p.modeloMovimiento) p.modeloMovimiento.visible = true;
+    } else {
+        if (p.modeloParado) p.modeloParado.visible = true;
     }
 }
 
@@ -193,21 +229,33 @@ function cargarPersonajeRemoto(id) {
             }
         });
         p.personaje = null;
-        p.mixer = null;
-        p.action = null;
     }
 
+    // Crear grupo contenedor para el jugador remoto
+    p.personaje = new THREE.Group();
+    p.personaje.position.set(p.posicion.x, p.posicion.y, p.posicion.z);
+    p.personaje.rotation.y = p.rotacion;
+    scene.add(p.personaje);
+
+    p.modeloParado = null;
+    p.modeloMovimiento = null;
+    p.modeloBaile = null;
+    p.mixerParado = null;
+    p.mixerMovimiento = null;
+    p.mixerBaile = null;
+
+    const idlePath = getIdleAnimation(p.nombre);
+    const movementPath = getMovementAnimation(p.nombre);
+    const dancePath = getModeloBaile(p.nombre);
+
+    // Cargar Idle Remoto
     loader.load(
-        p.animacionActual,
+        idlePath,
         (gltf) => {
             if (!remotePlayers[id]) return;
-
-            const modelo = gltf.scene;
-            modelo.scale.set(escalaDeseada, escalaDeseada, escalaDeseada);
-            modelo.position.set(p.posicion.x, p.posicion.y, p.posicion.z);
-            modelo.rotation.y = p.rotacion;
-
-            modelo.traverse((child) => {
+            p.modeloParado = gltf.scene;
+            p.modeloParado.scale.set(escalaDeseada, escalaDeseada, escalaDeseada);
+            p.modeloParado.traverse((child) => {
                 if (child.isMesh) {
                     child.castShadow = true;
                     child.receiveShadow = true;
@@ -216,27 +264,87 @@ function cargarPersonajeRemoto(id) {
                 }
             });
 
-            // Añadir etiqueta de texto con Nombre e IP flotantes sobre la cabeza
-            const tagText = `${p.nombre}`;
-            const sprite = createTextSprite(tagText);
-            sprite.position.set(0, 47, 0);
-            sprite.scale.set(4 / escalaDeseada, 1 / escalaDeseada, 1 / escalaDeseada);
-            modelo.add(sprite);
-
-            scene.add(modelo);
-            p.personaje = modelo;
-
             if (gltf.animations && gltf.animations.length > 0) {
-                p.mixer = new THREE.AnimationMixer(modelo);
-                const action = p.mixer.clipAction(gltf.animations[0]);
+                p.mixerParado = new THREE.AnimationMixer(p.modeloParado);
+                const action = p.mixerParado.clipAction(gltf.animations[0]);
                 action.setLoop(THREE.LoopRepeat, Infinity);
                 action.play();
-                p.action = action;
             }
+
+            p.personaje.add(p.modeloParado);
+            actualizarVisibilidadRemoto(id);
         },
         undefined,
-        (error) => console.error(`[Multiplayer] Error cargando personaje remoto ID ${id}:`, error)
+        (error) => console.error(`[Multiplayer] Error cargando idle remoto ID ${id}:`, error)
     );
+
+    // Cargar Movimiento Remoto
+    loader.load(
+        movementPath,
+        (gltf) => {
+            if (!remotePlayers[id]) return;
+            p.modeloMovimiento = gltf.scene;
+            p.modeloMovimiento.scale.set(escalaDeseada, escalaDeseada, escalaDeseada);
+            p.modeloMovimiento.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    child.userData.isPersonaje = true;
+                    colisionadoresMeshes.push(child);
+                }
+            });
+
+            if (gltf.animations && gltf.animations.length > 0) {
+                p.mixerMovimiento = new THREE.AnimationMixer(p.modeloMovimiento);
+                const action = p.mixerMovimiento.clipAction(gltf.animations[0]);
+                action.setLoop(THREE.LoopRepeat, Infinity);
+                action.play();
+            }
+
+            p.personaje.add(p.modeloMovimiento);
+            actualizarVisibilidadRemoto(id);
+        },
+        undefined,
+        (error) => console.error(`[Multiplayer] Error cargando movimiento remoto ID ${id}:`, error)
+    );
+
+    // Cargar Baile Remoto
+
+    loader.load(
+        dancePath,
+        (gltf) => {
+            if (!remotePlayers[id]) return;
+            p.modeloBaile = gltf.scene;
+            p.modeloBaile.scale.set(escalaDeseada, escalaDeseada, escalaDeseada);
+            p.modeloBaile.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    child.userData.isPersonaje = true;
+                    colisionadoresMeshes.push(child);
+                }
+            });
+
+            if (gltf.animations && gltf.animations.length > 0) {
+                p.mixerBaile = new THREE.AnimationMixer(p.modeloBaile);
+                const action = p.mixerBaile.clipAction(gltf.animations[0]);
+                action.setLoop(THREE.LoopRepeat, Infinity);
+                action.play();
+            }
+
+            p.personaje.add(p.modeloBaile);
+            actualizarVisibilidadRemoto(id);
+        },
+        undefined,
+        (error) => console.error(`[Multiplayer] Error cargando baile remoto ID ${id}:`, error)
+    );
+
+    // Añadir etiqueta de texto con Nombre e IP flotantes sobre la cabeza del contenedor
+    const tagText = `${p.nombre}`;
+    const sprite = createTextSprite(tagText);
+    sprite.position.set(0, 2, 0); // Altura en coordenadas del grupo
+    sprite.scale.set(4, 1, 1);
+    p.personaje.add(sprite);
 }
 
 let ultimoEstadoEnviado = {
@@ -295,6 +403,8 @@ function getIdleAnimation(name) {
             return './src/assets/ChavoParado.glb';
         case 'Quico':
             return './src/assets/QuicoParado.glb';
+        case 'Jaimito':
+            return './src/assets/JaimitoParado.glb';
         // Añade más casos aquí cuando quieras
         default:
             return './src/assets/ChavoParado.glb';
@@ -308,6 +418,8 @@ function getMovementAnimation(name) {
             return './src/assets/ChavoMovimiento.glb';
         case 'Quico':
             return './src/assets/QuicoMovimiento.glb';
+        case 'Jaimito':
+            return './src/assets/JaimitoMovimiento.glb';
 
         // Añade más casos aquí cuando quieras
         default:
@@ -322,6 +434,8 @@ function getModeloBaile(name) {
             return './src/assets/Chavorumba.glb';
         case 'Quico':
             return './src/assets/Quicotwerk.glb';
+        case 'Jaimito':
+            return './src/assets/JaimitoDance.glb';
         // Añade más casos aquí para otros personajes
         default:
             return './src/assets/Chavorumba.glb';
@@ -333,6 +447,8 @@ function getCancionBaile(name) {
             return './src/assets/Chavorumba.mp3';
         case 'Quico':
             return './src/assets/Quicotwerk.mp3' ;
+        case 'Jaimito':
+            return './src/assets/JaimitoDance.mp3' ;
         // Añade más casos aquí para otros personajes
         default:
             return './src/assets/Chavorumba.mp3' ;
@@ -397,7 +513,7 @@ const loader = new GLTFLoader();
 // Inicia la carga del personaje Chavo (GLTF). Se añadirá a la escena cuando termine la carga
 // Inicializar la animación por defecto según `Nombre` y cargar
 AnimacionActual = getIdleAnimation(Nombre);
-cargarChavo();
+cargarModelosPersonaje();
 // Reproducir la canción actual al inicio (no debe reiniciarse al cambiar animación)
 playCurrentSong();
 // Inicializar conexión multijugador
@@ -512,71 +628,50 @@ function cargarEdificiosModernos() {
     });
 }
 
+function actualizarVisibilidadModelos() {
+    const isMoving = Object.values(teclas).some(v => v);
+    
+    if (modeloParado) modeloParado.visible = false;
+    if (modeloMovimiento) modeloMovimiento.visible = false;
+    if (modeloBaile) modeloBaile.visible = false;
+    
+    if (isChavorumbaActive) {
+        if (modeloBaile) modeloBaile.visible = true;
+        AnimacionActual = getModeloBaile(Nombre);
+    } else if (isMoving) {
+        if (modeloMovimiento) modeloMovimiento.visible = true;
+        AnimacionActual = getMovementAnimation(Nombre);
+    } else {
+        if (modeloParado) modeloParado.visible = true;
+        AnimacionActual = getIdleAnimation(Nombre);
+    }
+}
+
 // Carga el personaje Chavo desde GLTF
 function cargarChavo() {
-        // Si ya hay un personaje, preservar su posición/rotación y eliminar colisionadores previos
-        const posicionPrev = new THREE.Vector3(0, 0, 0);
-        const rotacionPrev = new THREE.Euler(0, 0, 0);
-        if (personaje) {
-                posicionPrev.copy(personaje.position);
-                rotacionPrev.copy(personaje.rotation);
-                personaje.traverse((child) => {
-                        if (child.isMesh && child.userData && child.userData.isPersonaje) {
-                                const idx = colisionadoresMeshes.indexOf(child);
-                                if (idx !== -1) colisionadoresMeshes.splice(idx, 1);
-                        }
-                });
-                scene.remove(personaje);
-        }
-
-        loader.load(
-                AnimacionActual,
-        (gltf) => {
-            const modelo = gltf.scene;
-            modelo.scale.set(escalaDeseada, escalaDeseada, escalaDeseada);
-            // Aplicar posición/rotación previa para evitar saltos al cambiar animación
-            modelo.position.copy(posicionPrev);
-            modelo.rotation.copy(rotacionPrev);
-            modelo.traverse((child) => {
-                if (child.isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
-                                        // marcar como malla de personaje para facilitar reemplazos posteriores
-                                        child.userData.isPersonaje = true;
-                                        colisionadoresMeshes.push(child);
-                }
-            });
-
-            
-
-            scene.add(modelo);
-            personaje = modelo;
-                        // No cambiar `Nombre` aquí: `Nombre` controla qué animaciones/respuestas usar.
-            if (gltf.animations && gltf.animations.length > 0) {
-                chavoMixer = new THREE.AnimationMixer(modelo);
-                                const action = chavoMixer.clipAction(gltf.animations[0]);
-                                action.setLoop(THREE.LoopRepeat, Infinity);
-                                action.play();
-                                chavoAction = action;
-            }
-        },
-        undefined,
-        (error) => console.error('Error cargando Chavo:', error)
-    );
+    actualizarVisibilidadModelos();
 }
 
 // Carga y reemplaza el personaje por el GLB pedido ('J')
 function cargarChavorumba() {
-    // Actualizar estado deseado para este modelo/sonido
+    isChavorumbaActive = true;
     AnimacionActual = getModeloBaile(Nombre);
     CancionActual = getCancionBaile(Nombre);
-    // Guardar posición y rotación del personaje actual (si existe)
+    
+    actualizarVisibilidadModelos();
+    
+    // Reproducir la canción asociada si aún no se está reproduciendo
+    playCurrentSong();
+}
+
+function cargarModelosPersonaje() {
     const posicionPrev = new THREE.Vector3(0, 0, 0);
     const rotacionPrev = new THREE.Euler(0, 0, 0);
+    
     if (personaje) {
         posicionPrev.copy(personaje.position);
         rotacionPrev.copy(personaje.rotation);
-        // Eliminar colisionadores asociados al personaje anterior
+        
         personaje.traverse((child) => {
             if (child.isMesh && child.userData && child.userData.isPersonaje) {
                 const idx = colisionadoresMeshes.indexOf(child);
@@ -585,49 +680,95 @@ function cargarChavorumba() {
         });
         scene.remove(personaje);
     }
-
-    // Reset de mixers/acciones previas
-    chavoMixer = null;
-    chavoAction = null;
-    isChavorumbaActive = false;
-
-    loader.load(
-        AnimacionActual,
-        (gltf) => {
-            const modelo = gltf.scene;
-            // Aplicar la misma posición y rotación que el personaje anterior
-            modelo.position.copy(posicionPrev);
-            modelo.rotation.copy(rotacionPrev);
-            // Aplicar escala compartida
-            modelo.scale.set(escalaDeseada, escalaDeseada, escalaDeseada);
-            modelo.traverse((child) => {
-                if (child.isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
-                    child.userData.isPersonaje = true;
-                    colisionadoresMeshes.push(child);
-                }
-            });
-
-            
-
-            scene.add(modelo);
-            personaje = modelo;
-            isChavorumbaActive = true;
-
-            if (gltf.animations && gltf.animations.length > 0) {
-                chavoMixer = new THREE.AnimationMixer(modelo);
-                const action = chavoMixer.clipAction(gltf.animations[0]);
-                action.setLoop(THREE.LoopRepeat, Infinity);
-                action.play();
-                chavoAction = action;
+    
+    // Crear el nuevo grupo contenedor para el personaje local
+    personaje = new THREE.Group();
+    personaje.position.copy(posicionPrev);
+    personaje.rotation.copy(rotacionPrev);
+    scene.add(personaje);
+    
+    modeloParado = null;
+    modeloMovimiento = null;
+    modeloBaile = null;
+    mixerParado = null;
+    mixerMovimiento = null;
+    mixerBaile = null;
+    
+    const idlePath = getIdleAnimation(Nombre);
+    const movementPath = getMovementAnimation(Nombre);
+    const dancePath = getModeloBaile(Nombre);
+    
+    // Cargar Idle
+    loader.load(idlePath, (gltf) => {
+        modeloParado = gltf.scene;
+        modeloParado.scale.set(escalaDeseada, escalaDeseada, escalaDeseada);
+        modeloParado.traverse((child) => {
+            if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+                child.userData.isPersonaje = true;
+                colisionadoresMeshes.push(child);
             }
-            // Reproducir la canción asociada si aún no se está reproduciendo
-            playCurrentSong();
-        },
-        undefined,
-        (error) => console.error('Error cargando Chavorumba:', error)
-    );
+        });
+        
+        if (gltf.animations && gltf.animations.length > 0) {
+            mixerParado = new THREE.AnimationMixer(modeloParado);
+            const action = mixerParado.clipAction(gltf.animations[0]);
+            action.setLoop(THREE.LoopRepeat, Infinity);
+            action.play();
+        }
+        
+        personaje.add(modeloParado);
+        actualizarVisibilidadModelos();
+    }, undefined, (error) => console.error('Error cargando Idle:', error));
+    
+    // Cargar Movimiento
+    loader.load(movementPath, (gltf) => {
+        modeloMovimiento = gltf.scene;
+        modeloMovimiento.scale.set(escalaDeseada, escalaDeseada, escalaDeseada);
+        modeloMovimiento.traverse((child) => {
+            if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+                child.userData.isPersonaje = true;
+                colisionadoresMeshes.push(child);
+            }
+        });
+        
+        if (gltf.animations && gltf.animations.length > 0) {
+            mixerMovimiento = new THREE.AnimationMixer(modeloMovimiento);
+            const action = mixerMovimiento.clipAction(gltf.animations[0]);
+            action.setLoop(THREE.LoopRepeat, Infinity);
+            action.play();
+        }
+        
+        personaje.add(modeloMovimiento);
+        actualizarVisibilidadModelos();
+    }, undefined, (error) => console.error('Error cargando Movimiento:', error));
+    
+    // Cargar Baile
+    loader.load(dancePath, (gltf) => {
+        modeloBaile = gltf.scene;
+        modeloBaile.scale.set(escalaDeseada, escalaDeseada, escalaDeseada);
+        modeloBaile.traverse((child) => {
+            if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+                child.userData.isPersonaje = true;
+                colisionadoresMeshes.push(child);
+            }
+        });
+        
+        if (gltf.animations && gltf.animations.length > 0) {
+            mixerBaile = new THREE.AnimationMixer(modeloBaile);
+            const action = mixerBaile.clipAction(gltf.animations[0]);
+            action.setLoop(THREE.LoopRepeat, Infinity);
+            action.play();
+        }
+        
+        personaje.add(modeloBaile);
+        actualizarVisibilidadModelos();
+    }, undefined, (error) => console.error('Error cargando Baile:', error));
 }
 
 function cargarEdificiosMedievales() {
@@ -700,12 +841,25 @@ document.addEventListener('keydown', (event) => {
 
 
     if (event.key.toLowerCase() === '1') {
-        Nombre = 'Chavo';
+        if (Nombre !== 'Chavo') {
+            Nombre = 'Chavo';
+            cargarModelosPersonaje();
+        }
     }
 
     if (event.key.toLowerCase() === '2') {
-        Nombre = 'Quico';
+        if (Nombre !== 'Quico') {
+            Nombre = 'Quico';
+            cargarModelosPersonaje();
+        }
     }
+    if (event.key.toLowerCase() === '3') {
+        if (Nombre !== 'Jaimito') {
+            Nombre = 'Jaimito';
+            cargarModelosPersonaje();
+        }
+    }
+
 
     if (event.key.toLowerCase() === 'v') {
         usandoCamaraPersonaje = !usandoCamaraPersonaje;
@@ -885,7 +1039,15 @@ function animate() {
     if (usandoCamaraPersonaje) {
         moverPersonaje(delta);
         actualizarCamara();
-        if (chavoMixer) chavoMixer.update(delta);
+        
+        const isMoving = Object.values(teclas).some(v => v);
+        if (isChavorumbaActive) {
+            if (mixerBaile) mixerBaile.update(delta);
+        } else if (isMoving) {
+            if (mixerMovimiento) mixerMovimiento.update(delta);
+        } else {
+            if (mixerParado) mixerParado.update(delta);
+        }
         
         // --- MULTIPLAYER UPDATE ---
         enviarActualizacionDeEstado();
@@ -910,8 +1072,13 @@ function animate() {
                 p.personaje.rotation.y += diff * 0.25;
             }
             // Actualizar animador remoto
-            if (p.mixer) {
-                p.mixer.update(delta);
+            const movementPath = getMovementAnimation(p.nombre);
+            if (p.isChavorumbaActive) {
+                if (p.mixerBaile) p.mixerBaile.update(delta);
+            } else if (p.animacionActual === movementPath) {
+                if (p.mixerMovimiento) p.mixerMovimiento.update(delta);
+            } else {
+                if (p.mixerParado) p.mixerParado.update(delta);
             }
         }
     }
