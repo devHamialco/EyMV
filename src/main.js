@@ -671,6 +671,60 @@ function cargarEdificiosModernos() {
         { modelo: 'building_E.gltf', x: 38, z: -27, escala: 5, rotacion: Math.PI },
     ];
     
+    // --- ANILLO EXTERIOR: 12 cuadras nuevas (4x4 total) ---
+    const PLANTILLA_A = [
+        { m: 'A', dx: -9, dz: 11, r: 0 },
+        { m: 'B', dx: -2, dz: 11, r: 0 },
+        { m: 'C', dx: 6, dz: 11, r: 0 },
+        { m: 'D', dx: 15, dz: 11, r: 0 },
+        { m: 'E', dx: 15, dz: 3, r: Math.PI/2 },
+        { m: 'F', dx: 15, dz: -7, r: Math.PI/2 },
+        { m: 'D', dx: 15, dz: -17, r: Math.PI/2 },
+        { m: 'G', dx: -15, dz: 3, r: -Math.PI/2 },
+        { m: 'H', dx: -15, dz: 11, r: -Math.PI/2 },
+        { m: 'A', dx: -15, dz: 19, r: -Math.PI/2 },
+        { m: 'B', dx: -15, dz: -19, r: Math.PI },
+        { m: 'C', dx: -8, dz: -19, r: Math.PI },
+        { m: 'E', dx: 5, dz: -19, r: Math.PI },
+    ];
+    const PLANTILLA_B = [
+        { m: 'D', dx: -10, dz: 11, r: 0 },
+        { m: 'C', dx: -2, dz: 11, r: 0 },
+        { m: 'A', dx: 15, dz: 11, r: 0 },
+        { m: 'F', dx: 15, dz: 3, r: Math.PI/2 },
+        { m: 'E', dx: 15, dz: -7, r: Math.PI/2 },
+        { m: 'B', dx: 15, dz: -17, r: Math.PI/2 },
+        { m: 'H', dx: -15, dz: 3, r: -Math.PI/2 },
+        { m: 'G', dx: -15, dz: 11, r: -Math.PI/2 },
+        { m: 'D', dx: -15, dz: 19, r: -Math.PI/2 },
+        { m: 'A', dx: -10, dz: -9, r: Math.PI },
+        { m: 'C', dx: -2, dz: -9, r: Math.PI },
+        { m: 'F', dx: 6, dz: -9, r: Math.PI },
+    ];
+    const PLANTILLAS = [PLANTILLA_A, PLANTILLA_B];
+    
+    const anilloExterior = [
+        { x: -75, z: -108 }, { x: -25, z: -108 },
+        { x: 25, z: -108 },  { x: 75, z: -108 },
+        { x: -75, z: -58 },  { x: 75, z: -58 },
+        { x: -75, z: -8 },   { x: 75, z: -8 },
+        { x: -75, z: 42 },   { x: -25, z: 42 },
+        { x: 25, z: 42 },    { x: 75, z: 42 },
+    ];
+    
+    anilloExterior.forEach((c, i) => {
+        const plantilla = PLANTILLAS[i % PLANTILLAS.length];
+        for (const b of plantilla) {
+            edificiosModernos.push({
+                modelo: `building_${b.m}.gltf`,
+                x: c.x + b.dx,
+                z: c.z + b.dz,
+                escala: 5,
+                rotacion: b.r,
+            });
+        }
+    });
+    
     edificiosModernos.forEach(edificio => {
         loader.load(
             `./src/assets/Builds/Assets/gltf/${edificio.modelo}`,
@@ -1295,7 +1349,7 @@ directionalLight.shadow.camera.bottom = -30;
 scene.add(directionalLight);
 
 const suelo = new THREE.Mesh(
-    new THREE.PlaneGeometry(150, 200),
+    new THREE.PlaneGeometry(280, 320),
     new THREE.MeshStandardMaterial({ color: 0x393D42 })
 );
 suelo.rotation.x = -Math.PI / 2;
@@ -1304,7 +1358,7 @@ suelo.userData.esSuelo = true;
 scene.add(suelo);
 colisionadoresMeshes.push(suelo);
 
-const limiteEscenario = 100;
+const limiteEscenario = 150;
 
 function noEsMallaPropia(obj) {
     while (obj) {
