@@ -56,7 +56,7 @@ let reloadTimer = null;
 // --- PROYECTILES (BOLILLO) ---
 let bolilloModel = null; // modelo precargado
 const proyectiles = [];
-const VELOCIDAD_BOLILLO = 25;
+const VELOCIDAD_BOLILLO = 20;
 
 // Genera un Sprite con textura Canvas para mostrar el Nombre e IP flotantes sobre la cabeza del personaje
 function createTextSprite(text) {
@@ -520,6 +520,7 @@ document.body.appendChild(renderer.domElement);
 crearHUD();
 
 const velocidadPersonaje = 10;
+const clock = new THREE.Clock();
 const teclas = { w: false, a: false, s: false, d: false };
 
 let anguloCamara = 0;
@@ -577,7 +578,7 @@ initMultiplayer();
 const edificios = [];
 const colisionadoresMeshes = [];
 const raycaster = new THREE.Raycaster();
-const radioPersonaje = 0.4;
+let radioPersonaje = 0.5; // valor base, se actualiza por frame en moverPersonaje
 
 cargarEdificiosMedievales();
 cargarEdificiosModernos();
@@ -587,9 +588,7 @@ loader.load(
     './src/assets/bolillo.glb',
     (gltf) => {
         bolilloModel = gltf.scene;
-        bolilloModel.scale.set(0.8, 0.8, 0.8);
-        // Rotarlo para que apunte en dirección de disparo (eje Z)
-        bolilloModel.rotation.x = Math.PI / 2;
+        bolilloModel.scale.set(5, 5, 5);
     },
     undefined,
     (error) => console.error('Error cargando bolillo:', error)
@@ -999,7 +998,7 @@ function crearHUD() {
     hud.id = 'hud';
     hud.innerHTML = `
         <div id="health-container">
-            <div id="health-label">HP</div>
+            <div id="health-label">Vida</div>
             <div id="health-bar"><div id="health-fill"></div></div>
         </div>
         <div id="ammo-container">
@@ -1010,7 +1009,7 @@ function crearHUD() {
             <div id="death-text">ELIMINADO</div>
             <div id="respawn-timer">Reapareciendo en 3...</div>
         </div>
-        <div id="reload-notice">RECARGANDO...</div>
+        <div id="reload-notice">ESPERANDO...</div>
     `;
     document.body.appendChild(hud);
 }
@@ -1049,9 +1048,7 @@ function dispararBolillo(origen, direccion) {
     
     const proj = bolilloModel.clone(true);
     proj.position.copy(origen);
-    // Alinear el bolillo con la direccion de disparo
-    proj.lookAt(origen.clone().add(direccion));
-    proj.scale.set(0.8, 0.8, 0.8);
+    proj.scale.set(3, 3, 3);
     scene.add(proj);
     
     proyectiles.push({
@@ -1072,7 +1069,7 @@ function actualizarProyectiles(delta) {
         p.distance += step;
         
         // Rotar el bolillo mientras vuela (efecto visual)
-        p.mesh.rotation.z += delta * 10;
+        p.mesh.rotation.z += delta * 1;
         
         // Eliminar si alcanzó la distancia máxima
         if (p.distance >= p.maxDistance) {
@@ -1223,21 +1220,27 @@ document.addEventListener('click', (event) => {
         
         // Disparar proyectil visual (bolillo) — sale del personaje como un lanzamiento
         if (personaje) {
-            const shootDir = new THREE.Vector3(0, 0, -1);
-            shootDir.applyQuaternion(camera.quaternion);
-            // Origen: costado derecho del personaje a la altura del pecho
-            const shootOrigin = new THREE.Vector3(
-                personaje.position.x + Math.sin(anguloRotacionMouse + Math.PI / 2) * 0.8,
-                personaje.position.y + 0.7,
-                personaje.position.z + Math.cos(anguloRotacionMouse + Math.PI / 2) * 0.8
-            );
-            dispararBolillo(shootOrigin, shootDir);
-        }
-        
-        const shootRaycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2(0, 0); // center of screen
-        shootRaycaster.setFromCamera(mouse, camera);
-        shootRaycaster.far = MAX_SHOOT_DISTANCE;
+        // 1. Dirección: la del personaje (horizontal, sin el pitch de la cámara)
+        const shootDir = new THREE.Vector3(
+            Math.sin(anguloRotacionMouse),
+            0,
+            Math.cos(anguloRotacionMouse)
+        ).normalize();
+
+        // 2. Origen centrado en el pecho del personaje
+        const shootOrigin = personaje.position.clone();
+        shootOrigin.y += 0.7;
+
+        // 3. Disparamos desde el centro
+        dispararBolillo(shootOrigin, shootDir);
+    }
+
+    // El Raycaster de puntería se mantiene exactamente igual,
+    // ya que sigue definiendo a dónde queremos que vaya el disparo.
+    const shootRaycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2(0, 0); // centro de pantalla
+    shootRaycaster.setFromCamera(mouse, camera);
+    shootRaycaster.far = MAX_SHOOT_DISTANCE;
         
         // Get all remote player meshes
         const remoteTargets = [];
@@ -1339,9 +1342,12 @@ function puedeMoverse(direccion) {
 }
 
 function moverPersonaje(delta) {
-  if (!personaje) return;
+    if (!personaje) return;
     if (!isAlive) return;
     const velocidad = velocidadPersonaje;
+    
+    // Ajustar el far del raycaster según el delta real para evitar clipping
+    radioPersonaje = Math.max(velocidad * delta * 1.2, 0.5);
     
     const direccionAdelante = new THREE.Vector3(
         Math.sin(anguloRotacionMouse),
@@ -1409,7 +1415,8 @@ function actualizarCamara() {
 function animate() {
     requestAnimationFrame(animate);
     
-    const delta = 1 / 60;
+    // Delta real con clamp para evitar saltos si la tab estuvo en background
+    const delta = Math.min(clock.getDelta(), 0.05);
     
     if (usandoCamaraPersonaje) {
         moverPersonaje(delta);
