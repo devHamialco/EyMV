@@ -53,6 +53,11 @@ const CLIP_SIZE = 30;
 let isReloading = false;
 let reloadTimer = null;
 
+// --- PROYECTILES (BOLILLO) ---
+let bolilloModel = null; // modelo precargado
+const proyectiles = [];
+const VELOCIDAD_BOLILLO = 25;
+
 // Genera un Sprite con textura Canvas para mostrar el Nombre e IP flotantes sobre la cabeza del personaje
 function createTextSprite(text) {
     const canvas = document.createElement('canvas');
@@ -577,6 +582,19 @@ const radioPersonaje = 0.4;
 cargarEdificiosMedievales();
 cargarEdificiosModernos();
 
+// Precargar modelo de proyectil (bolillo)
+loader.load(
+    './src/assets/bolillo.glb',
+    (gltf) => {
+        bolilloModel = gltf.scene;
+        bolilloModel.scale.set(0.8, 0.8, 0.8);
+        // Rotarlo para que apunte en dirección de disparo (eje Z)
+        bolilloModel.rotation.x = Math.PI / 2;
+    },
+    undefined,
+    (error) => console.error('Error cargando bolillo:', error)
+);
+
 // Cápsula azul reemplazada por GLTF Chavo (cargado en cargarChavo)
 
 function cargarEdificiosModernos() {
@@ -1025,6 +1043,45 @@ function mostrarHitIndicator() {
     }, 200);
 }
 
+// --- SISTEMA DE PROYECTILES (BOLILLO) ---
+function dispararBolillo(origen, direccion) {
+    if (!bolilloModel) return;
+    
+    const proj = bolilloModel.clone(true);
+    proj.position.copy(origen);
+    // Alinear el bolillo con la direccion de disparo
+    proj.lookAt(origen.clone().add(direccion));
+    proj.scale.set(0.8, 0.8, 0.8);
+    scene.add(proj);
+    
+    proyectiles.push({
+        mesh: proj,
+        direction: direccion.clone().normalize(),
+        distance: 0,
+        maxDistance: MAX_SHOOT_DISTANCE,
+        speed: VELOCIDAD_BOLILLO
+    });
+}
+
+// Actualizar proyectiles en cada frame (se llama desde animate)
+function actualizarProyectiles(delta) {
+    for (let i = proyectiles.length - 1; i >= 0; i--) {
+        const p = proyectiles[i];
+        const step = p.speed * delta;
+        p.mesh.position.add(p.direction.clone().multiplyScalar(step));
+        p.distance += step;
+        
+        // Rotar el bolillo mientras vuela (efecto visual)
+        p.mesh.rotation.z += delta * 10;
+        
+        // Eliminar si alcanzó la distancia máxima
+        if (p.distance >= p.maxDistance) {
+            scene.remove(p.mesh);
+            proyectiles.splice(i, 1);
+        }
+    }
+}
+
 // Flecha para abajo
 document.addEventListener('keydown', (event) => {
     const key = event.key.toLowerCase();
@@ -1164,7 +1221,19 @@ document.addEventListener('click', (event) => {
         lastShotTime = now;
         actualizarHUD();
         
-        // Raycast from camera center
+        // Disparar proyectil visual (bolillo) — sale del personaje como un lanzamiento
+        if (personaje) {
+            const shootDir = new THREE.Vector3(0, 0, -1);
+            shootDir.applyQuaternion(camera.quaternion);
+            // Origen: costado derecho del personaje a la altura del pecho
+            const shootOrigin = new THREE.Vector3(
+                personaje.position.x + Math.sin(anguloRotacionMouse + Math.PI / 2) * 0.8,
+                personaje.position.y + 0.7,
+                personaje.position.z + Math.cos(anguloRotacionMouse + Math.PI / 2) * 0.8
+            );
+            dispararBolillo(shootOrigin, shootDir);
+        }
+        
         const shootRaycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2(0, 0); // center of screen
         shootRaycaster.setFromCamera(mouse, camera);
@@ -1232,30 +1301,36 @@ scene.add(suelo);
 
 const limiteEscenario = 100;
 
+function noEsMallaPropia(obj) {
+    while (obj) {
+        if (obj === personaje) return true;
+        if (obj.userData && obj.userData.isPersonaje) return true;
+        obj = obj.parent;
+    }
+    return false;
+}
+
 function verificarColision(direccion) {
   if (!personaje) return false;
-    const origen = new THREE.Vector3(
-        personaje.position.x,
-        personaje.position.y + 0.5,
-        personaje.position.z
-    );
-    
-    raycaster.set(origen, direccion);
-    raycaster.far = radioPersonaje;
-    
-    const intersecciones = raycaster.intersectObjects(colisionadoresMeshes, true);
-
-    // Ignorar colisiones contra las propias mallas del personaje
-    for (let i = 0; i < intersecciones.length; i++) {
-        let obj = intersecciones[i].object;
-        let isOwn = false;
-        while (obj) {
-            if (obj === personaje) { isOwn = true; break; }
-            obj = obj.parent;
+    // 8 rayos espaciados uniformemente a lo largo de TODO el alto del personaje
+    // (desde los pies hasta arriba de la cabeza) — colisión volumétrica real
+    const numRays = 8;
+    for (let i = 0; i < numRays; i++) {
+        const altura = 0.1 + (i / (numRays - 1)) * 1.6;
+        const origen = new THREE.Vector3(
+            personaje.position.x,
+            personaje.position.y + altura,
+            personaje.position.z
+        );
+        
+        raycaster.set(origen, direccion);
+        raycaster.far = radioPersonaje;
+        
+        const intersecciones = raycaster.intersectObjects(colisionadoresMeshes, true);
+        for (const hit of intersecciones) {
+            if (!noEsMallaPropia(hit.object)) return true;
         }
-        if (!isOwn) return true;
     }
-
     return false;
 }
 
@@ -1352,6 +1427,9 @@ function animate() {
         // --- MULTIPLAYER UPDATE ---
         enviarActualizacionDeEstado();
         actualizarHUD();
+        
+        // --- PROYECTILES ---
+        actualizarProyectiles(delta);
         
         renderer.render(scene, camera);
     } else {
