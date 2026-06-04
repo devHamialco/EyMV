@@ -41,6 +41,18 @@ let localPlayerId = null;
 let localPlayerIP = '';
 const remotePlayers = {}; // id -> { id, ip, nombre, animacionActual, isChavorumbaActive, posicion, rotacion, personaje, mixer, action, targetPosicion, targetRotacion }
 
+// --- SHOOTER STATE ---
+let localHealth = 100;
+let localAmmo = 30;
+let isAlive = true;
+let lastShotTime = 0;
+const SHOOT_COOLDOWN = 400; // ms
+const SHOOT_DAMAGE = 20;
+const MAX_SHOOT_DISTANCE = 100;
+const CLIP_SIZE = 30;
+let isReloading = false;
+let reloadTimer = null;
+
 // Genera un Sprite con textura Canvas para mostrar el Nombre e IP flotantes sobre la cabeza del personaje
 function createTextSprite(text) {
     const canvas = document.createElement('canvas');
@@ -114,6 +126,44 @@ function initMultiplayer() {
                 case 'user_left':
                     console.log(`[Multiplayer] Jugador desconectado: ID ${msg.id}`);
                     removeRemotePlayer(msg.id);
+                    break;
+                case 'player_damage':
+                    localHealth = msg.health;
+                    actualizarHUD();
+                    mostrarHitIndicator();
+                    break;
+                case 'player_hit':
+                  if (msg.targetId === localPlayerId) {
+                    mostrarHitIndicator();
+                  }
+                  break;
+                case 'player_died':
+                    if (msg.playerId === localPlayerId) {
+                        isAlive = false;
+                        document.getElementById('death-screen').style.display = 'flex';
+                        let countdown = 3;
+                        document.getElementById('respawn-timer').textContent = `Reapareciendo en ${countdown}...`;
+                        const timer = setInterval(() => {
+                            countdown--;
+                            if (countdown > 0) {
+                                document.getElementById('respawn-timer').textContent = `Reapareciendo en ${countdown}...`;
+                            } else {
+                                clearInterval(timer);
+                            }
+                        }, 1000);
+                    }
+                    break;
+                case 'player_respawn':
+                    if (msg.playerId === localPlayerId) {
+                        isAlive = true;
+                        localHealth = 100;
+                        localAmmo = CLIP_SIZE;
+                        document.getElementById('death-screen').style.display = 'none';
+                        if (personaje) {
+                            personaje.position.set(msg.position.x, msg.position.y, msg.position.z);
+                        }
+                        actualizarHUD();
+                    }
                     break;
             }
         } catch (e) {
@@ -462,6 +512,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
+crearHUD();
 
 const velocidadPersonaje = 10;
 const teclas = { w: false, a: false, s: false, d: false };
@@ -800,6 +851,180 @@ function cargarEdificiosMedievales() {
     });
 }
 
+// --- SHOOTER & HUD FUNCTIONS ---
+
+function crearHUD() {
+    // Inject styles
+    const style = document.createElement('style');
+    style.textContent = `
+        #hud {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1000;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        #health-container {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        #health-label {
+            color: #fff;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(0,0,0,0.8);
+            width: 30px;
+        }
+        #health-bar {
+            width: 260px;
+            height: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+        #health-fill {
+            height: 100%;
+            width: 100%;
+            background: #4ade80;
+            border-radius: 8px;
+            transition: width 0.2s ease, background 0.3s ease;
+        }
+        #health-fill.medium {
+            background: #eab308;
+        }
+        #health-fill.low {
+            background: #ef4444;
+        }
+        #ammo-container {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+        }
+        #ammo-counter {
+            color: #fff;
+            font-size: 28px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5);
+            font-family: 'Courier New', monospace;
+        }
+        #hit-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 999;
+            background: radial-gradient(ellipse at center, transparent 60%, rgba(255, 0, 0, 0.6) 100%);
+            opacity: 0;
+            transition: opacity 0.1s ease;
+        }
+        #hit-indicator.active {
+            opacity: 1;
+        }
+        #death-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            background: rgba(0, 0, 0, 0.75);
+            z-index: 1001;
+            pointer-events: none;
+        }
+        #death-text {
+            color: #ef4444;
+            font-size: 72px;
+            font-weight: bold;
+            text-shadow: 0 0 30px rgba(239, 68, 68, 0.5);
+            font-family: 'Segoe UI', Arial, sans-serif;
+            letter-spacing: 8px;
+        }
+        #respawn-timer {
+            color: #fff;
+            font-size: 24px;
+            margin-top: 20px;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            opacity: 0.8;
+        }
+        #reload-notice {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #eab308;
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(0,0,0,0.8);
+            z-index: 1000;
+            pointer-events: none;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 2px;
+        }
+    `;
+    document.head.appendChild(style);
+
+    // Create HUD container
+    const hud = document.createElement('div');
+    hud.id = 'hud';
+    hud.innerHTML = `
+        <div id="health-container">
+            <div id="health-label">HP</div>
+            <div id="health-bar"><div id="health-fill"></div></div>
+        </div>
+        <div id="ammo-container">
+            <span id="ammo-counter">30 / 30</span>
+        </div>
+        <div id="hit-indicator"></div>
+        <div id="death-screen">
+            <div id="death-text">ELIMINADO</div>
+            <div id="respawn-timer">Reapareciendo en 3...</div>
+        </div>
+        <div id="reload-notice">RECARGANDO...</div>
+    `;
+    document.body.appendChild(hud);
+}
+
+function actualizarHUD() {
+    const fill = document.getElementById('health-fill');
+    const counter = document.getElementById('ammo-counter');
+    if (fill) {
+        const pct = Math.max(0, Math.min(100, localHealth));
+        fill.style.width = pct + '%';
+        fill.classList.remove('medium', 'low');
+        if (pct <= 25) fill.classList.add('low');
+        else if (pct <= 50) fill.classList.add('medium');
+    }
+    if (counter) {
+        counter.textContent = localAmmo + ' / ' + CLIP_SIZE;
+    }
+}
+
+function mostrarHitIndicator() {
+    const indicator = document.getElementById('hit-indicator');
+    if (!indicator) return;
+    indicator.style.display = 'block';
+    indicator.classList.add('active');
+    setTimeout(() => {
+        indicator.classList.remove('active');
+        setTimeout(() => {
+            indicator.style.display = 'none';
+        }, 100);
+    }, 200);
+}
+
 // Flecha para abajo
 document.addEventListener('keydown', (event) => {
     const key = event.key.toLowerCase();
@@ -837,6 +1062,18 @@ document.addEventListener('keydown', (event) => {
     // Reemplazar modelo al presionar 'j'
     if (event.key.toLowerCase() === 'j') {
         cargarChavorumba();
+    }
+
+    // Recargar arma al presionar 'r'
+    if (event.key.toLowerCase() === 'r' && isAlive && !isReloading && localAmmo < CLIP_SIZE) {
+        isReloading = true;
+        document.getElementById('reload-notice').style.display = 'block';
+        reloadTimer = setTimeout(() => {
+            localAmmo = CLIP_SIZE;
+            isReloading = false;
+            document.getElementById('reload-notice').style.display = 'none';
+            actualizarHUD();
+        }, 2000);
     }
 
 
@@ -900,9 +1137,71 @@ document.addEventListener('mousemove', (event) => {
     }
 });
 
-document.addEventListener('click', () => {
-    if (usandoCamaraPersonaje) {
+document.addEventListener('click', (event) => {
+    // If not pointer locked and using character camera, request pointer lock
+    if (usandoCamaraPersonaje && document.pointerLockElement !== renderer.domElement) {
         renderer.domElement.requestPointerLock();
+        return;
+    }
+    
+    // Left click = shoot (only when pointer is locked and using character camera)
+    if (event.button === 0 && usandoCamaraPersonaje && document.pointerLockElement === renderer.domElement) {
+        if (!isAlive) return;
+        
+        // Cancel reload on shoot
+        if (isReloading) {
+            isReloading = false;
+            if (reloadTimer) clearTimeout(reloadTimer);
+            const reloadNotice = document.getElementById('reload-notice');
+            if (reloadNotice) reloadNotice.style.display = 'none';
+        }
+        
+        const now = Date.now();
+        if (now - lastShotTime < SHOOT_COOLDOWN) return;
+        if (localAmmo <= 0) return;
+        
+        localAmmo--;
+        lastShotTime = now;
+        actualizarHUD();
+        
+        // Raycast from camera center
+        const shootRaycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2(0, 0); // center of screen
+        shootRaycaster.setFromCamera(mouse, camera);
+        shootRaycaster.far = MAX_SHOOT_DISTANCE;
+        
+        // Get all remote player meshes
+        const remoteTargets = [];
+        for (const id in remotePlayers) {
+            const p = remotePlayers[id];
+            if (p.personaje) {
+                p.personaje.traverse((child) => {
+                    if (child.isMesh) remoteTargets.push(child);
+                });
+            }
+        }
+        
+        const intersects = shootRaycaster.intersectObjects(remoteTargets, false);
+        if (intersects.length > 0) {
+            // Find which remote player was hit
+            let hitId = null;
+            for (const id in remotePlayers) {
+                const p = remotePlayers[id];
+                if (!p.personaje) continue;
+                let found = false;
+                p.personaje.traverse((child) => {
+                    if (child === intersects[0].object) found = true;
+                });
+                if (found) { hitId = id; break; }
+            }
+            if (hitId && socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'player_shot',
+                    targetId: hitId,
+                    damage: SHOOT_DAMAGE
+                }));
+            }
+        }
     }
 });
 
@@ -966,6 +1265,7 @@ function puedeMoverse(direccion) {
 
 function moverPersonaje(delta) {
   if (!personaje) return;
+    if (!isAlive) return;
     const velocidad = velocidadPersonaje;
     
     const direccionAdelante = new THREE.Vector3(
@@ -1051,6 +1351,7 @@ function animate() {
         
         // --- MULTIPLAYER UPDATE ---
         enviarActualizacionDeEstado();
+        actualizarHUD();
         
         renderer.render(scene, camera);
     } else {
