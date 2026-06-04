@@ -1300,7 +1300,9 @@ const suelo = new THREE.Mesh(
 );
 suelo.rotation.x = -Math.PI / 2;
 suelo.receiveShadow = true;
+suelo.userData.esSuelo = true;
 scene.add(suelo);
+colisionadoresMeshes.push(suelo);
 
 const limiteEscenario = 100;
 
@@ -1339,6 +1341,34 @@ function verificarColision(direccion) {
 
 function puedeMoverse(direccion) {
     return !verificarColision(direccion);
+}
+
+function obtenerAlturaSuelo() {
+    if (!personaje) return null;
+    
+    const origen = new THREE.Vector3(
+        personaje.position.x,
+        personaje.position.y + 0.2,
+        personaje.position.z
+    );
+    
+    const direccionAbajo = new THREE.Vector3(0, -1, 0);
+    raycaster.set(origen, direccionAbajo);
+    raycaster.far = 100;
+    
+    const intersecciones = raycaster.intersectObjects(colisionadoresMeshes, true);
+    
+    let alturaMaxima = -Infinity;
+    for (const hit of intersecciones) {
+        if (!noEsMallaPropia(hit.object)) {
+            const altura = origen.y - hit.distance;
+            if (altura > alturaMaxima) {
+                alturaMaxima = altura;
+            }
+        }
+    }
+    
+    return alturaMaxima > -Infinity ? alturaMaxima : null;
 }
 
 function moverPersonaje(delta) {
@@ -1384,7 +1414,13 @@ function moverPersonaje(delta) {
     velocidadVertical += gravedad * delta;
     personaje.position.y += velocidadVertical * delta;
     
-    if (personaje.position.y <= 0) {
+    // Detectar suelo: edificios, terreno, cualquier mesh sólida abajo
+    const alturaSuelo = obtenerAlturaSuelo();
+    if (alturaSuelo !== null && personaje.position.y <= alturaSuelo) {
+        personaje.position.y = alturaSuelo;
+        velocidadVertical = 0;
+        enElSuelo = true;
+    } else if (personaje.position.y <= 0) {
         personaje.position.y = 0;
         velocidadVertical = 0;
         enElSuelo = true;
